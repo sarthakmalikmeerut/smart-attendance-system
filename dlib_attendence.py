@@ -5,15 +5,11 @@ import os
 from datetime import datetime
 import pickle
 import tkinter as tk
-from tkinter import messagebox
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders  # Import the correct module
-import threading
 import subprocess
-
+import threading
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 path = 'training_images'
 images = []
@@ -55,12 +51,45 @@ else:
 
 print('Encoding Complete')
 
-# Function to start attendance recognition
-def start_attendance_recognition_thread():
-    recognition_thread = threading.Thread(target=start_attendance_recognition)
-    recognition_thread.daemon = True
-    recognition_thread.start()
 
+
+def start_external_script():
+    script_path = 'add new person.py'  # Replace with the actual path to your script
+    subprocess.Popen(['python', script_path])
+
+
+
+def send_email():
+    from_email = 'sarthakmalikmeerut@gmail.com'
+    to_email = 'sarthakmalikmeerut@gmail.com'
+    subject = 'Attendance Data'
+
+    # Create the email message
+    message = MIMEMultipart()
+    message['From'] = from_email
+    message['To'] = to_email
+    message['Subject'] = subject
+
+    # Attach the CSV file
+
+    date_string = datetime.now().strftime('Hour-%H_Date-%d_Month-%m_Year-%y')
+    filename = f'{date_string}.csv'
+    attachment = open(filename, 'rb').read()
+    attach_part = MIMEApplication(attachment, Name=filename)
+    attach_part['Content-Disposition'] = 'attachment; filename="{}"'.format(filename)
+    message.attach(attach_part)
+
+    # Connect to the SMTP server and send the email
+    with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        server.starttls()
+        server.login(from_email, 'mosy rpuz zyjo oyyw')  # Replace 'your_password' with your email password
+        server.send_message(message)
+
+    print('Email sent successfully.')
+
+
+
+# Function to start attendance recognition
 def start_attendance_recognition():
     print("Recognition started. Press 'Esc' to exit.")
 
@@ -114,7 +143,6 @@ def start_attendance_recognition():
         if key == ord('e'):
             clear_attendance()
 
-
         # Break the loop if 'Esc' key is pressed
         elif key == 27:
             # Reset attendance_marked and consistent_frame_count when breaking the loop
@@ -123,15 +151,6 @@ def start_attendance_recognition():
             break
 
 # Function to mark attendance
-def run_another_script():
-    try:
-        # Replace 'path_to_another_script.py' with the actual path to your script
-        subprocess.run(["python", "path_to_another_script.py"])
-    except Exception as e:
-        print(f"Error running the script: {e}")
-        messagebox.showerror("Error", "Failed to run the script. Check the script path and try again.")
-
-
 def mark_attendance(name):
     now = datetime.now()
     date_string = now.strftime('Hour-%H_Date-%d_Month-%m_Year-%y')  # Include hour and minute in the filename
@@ -159,51 +178,9 @@ def clear_attendance():
         f.truncate(0)
     print('Attendance cleared.')
 
-def send_email():
-    # Set your email credentials and details
-    sender_email = "sarthakmalikmeerut@gmail.com"
-    receiver_email = "sarthakmalikmeerut@gmail.com"
-    password = "rbia rott ouiq nkzo"
-
-    # Create the email message
-    subject = "Attendance Report"
-    body = "Attached is the attendance report for today."
-    message = MIMEMultipart()
-    message.attach(MIMEText(body, 'plain'))
-    message['Subject'] = subject
-    message['From'] = sender_email
-    message['To'] = receiver_email
-
-    # Attach the attendance report file
-    now = datetime.now()
-    date_string = now.strftime('Hour-%H_Date-%d_Month-%m_Year-%y')
-    file_name = f'{date_string}.csv'
-
-    try:
-        with open(file_name, 'rb') as attachment:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(attachment.read())
-
-        # Encode file in ASCII characters to send by email
-        encoders.encode_base64(part)
-
-        # Add header as key/value pair to attachment part
-        part.add_header('Content-Disposition', f'attachment; filename= {file_name}')
-
-        # Attach the part into message container
-        message.attach(part)
-
-        # Connect to the email server and send the email
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(sender_email, password)
-            server.sendmail(sender_email, receiver_email, message.as_string())
-
-        messagebox.showinfo("Email Sent", "Attendance report sent successfully.")
-    except Exception as e:
-        print(f"Error sending email: {e}")
-        messagebox.showerror("Error", "Failed to send email. Check your credentials and try again.")
-
+def start_recognition_thread():
+    recognition_thread = threading.Thread(target=start_attendance_recognition)
+    recognition_thread.start()
 
 # Main loop
 cap = cv2.VideoCapture(0)
@@ -213,17 +190,19 @@ root = tk.Tk()
 root.title("Attendance System")
 
 # Create Tkinter buttons
-start_button = tk.Button(root, text="Mark Attendance", command=start_attendance_recognition_thread)
+start_button = tk.Button(root, text="Mark Attendance", command=start_recognition_thread())
 start_button.pack(pady=10)
 
 send_email_button = tk.Button(root, text="Send Email", command=send_email)
 send_email_button.pack(pady=10)
 
-run_script_button = tk.Button(root, text="Run Another Script", command=run_another_script)
-run_script_button.pack(pady=10)
+external_script_button = tk.Button(root, text="Start External Script", command=start_external_script)
+external_script_button.pack(pady=10)
+
 
 # Main Tkinter loop
 root.mainloop()
 
 cap.release()
 cv2.destroyAllWindows()
+
