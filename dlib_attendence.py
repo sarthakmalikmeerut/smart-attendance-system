@@ -1,4 +1,3 @@
-
 import cv2
 import numpy as np
 import face_recognition
@@ -6,8 +5,17 @@ import os
 from datetime import datetime
 import pickle
 import tkinter as tk
+from tkinter import messagebox
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders  # Import the correct module
+import threading
+import subprocess
 
-path = 'home'
+
+path = 'training_images'
 images = []
 classNames = []
 myList = os.listdir(path)
@@ -20,7 +28,7 @@ for cl in myList:
 print(classNames)
 
 # Load saved encodings if available, otherwise create and save them
-encodings_file = 'encodings_home.pkl'
+encodings_file = 'encodings.pkl'
 if os.path.exists(encodings_file):
     with open(encodings_file, 'rb') as f:
         encodeListKnown = pickle.load(f)
@@ -38,6 +46,7 @@ else:
         return encodeList
 
 
+
     encodeListKnown = findEncodings(images)
 
     with open(encodings_file, 'wb') as f:
@@ -47,6 +56,11 @@ else:
 print('Encoding Complete')
 
 # Function to start attendance recognition
+def start_attendance_recognition_thread():
+    recognition_thread = threading.Thread(target=start_attendance_recognition)
+    recognition_thread.daemon = True
+    recognition_thread.start()
+
 def start_attendance_recognition():
     print("Recognition started. Press 'Esc' to exit.")
 
@@ -59,11 +73,11 @@ def start_attendance_recognition():
 
     while True:
         success, img = cap.read()
-        imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
-        imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
+        # imgS = cv2.resize(img, (0,0), None, 0.25,0.25)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        facesCurFrame = face_recognition.face_locations(imgS)
-        encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
+        facesCurFrame = face_recognition.face_locations(img)
+        encodesCurFrame = face_recognition.face_encodings(img, facesCurFrame)
 
         for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
             matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
@@ -100,6 +114,7 @@ def start_attendance_recognition():
         if key == ord('e'):
             clear_attendance()
 
+
         # Break the loop if 'Esc' key is pressed
         elif key == 27:
             # Reset attendance_marked and consistent_frame_count when breaking the loop
@@ -108,6 +123,15 @@ def start_attendance_recognition():
             break
 
 # Function to mark attendance
+def run_another_script():
+    try:
+        # Replace 'path_to_another_script.py' with the actual path to your script
+        subprocess.run(["python", "path_to_another_script.py"])
+    except Exception as e:
+        print(f"Error running the script: {e}")
+        messagebox.showerror("Error", "Failed to run the script. Check the script path and try again.")
+
+
 def mark_attendance(name):
     now = datetime.now()
     date_string = now.strftime('Hour-%H_Date-%d_Month-%m_Year-%y')  # Include hour and minute in the filename
@@ -135,6 +159,52 @@ def clear_attendance():
         f.truncate(0)
     print('Attendance cleared.')
 
+def send_email():
+    # Set your email credentials and details
+    sender_email = "sarthakmalikmeerut@gmail.com"
+    receiver_email = "sarthakmalikmeerut@gmail.com"
+    password = "rbia rott ouiq nkzo"
+
+    # Create the email message
+    subject = "Attendance Report"
+    body = "Attached is the attendance report for today."
+    message = MIMEMultipart()
+    message.attach(MIMEText(body, 'plain'))
+    message['Subject'] = subject
+    message['From'] = sender_email
+    message['To'] = receiver_email
+
+    # Attach the attendance report file
+    now = datetime.now()
+    date_string = now.strftime('Hour-%H_Date-%d_Month-%m_Year-%y')
+    file_name = f'{date_string}.csv'
+
+    try:
+        with open(file_name, 'rb') as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+
+        # Encode file in ASCII characters to send by email
+        encoders.encode_base64(part)
+
+        # Add header as key/value pair to attachment part
+        part.add_header('Content-Disposition', f'attachment; filename= {file_name}')
+
+        # Attach the part into message container
+        message.attach(part)
+
+        # Connect to the email server and send the email
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, message.as_string())
+
+        messagebox.showinfo("Email Sent", "Attendance report sent successfully.")
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        messagebox.showerror("Error", "Failed to send email. Check your credentials and try again.")
+
+
 # Main loop
 cap = cv2.VideoCapture(0)
 
@@ -143,8 +213,14 @@ root = tk.Tk()
 root.title("Attendance System")
 
 # Create Tkinter buttons
-start_button = tk.Button(root, text="Mark Attendance", command=start_attendance_recognition)
+start_button = tk.Button(root, text="Mark Attendance", command=start_attendance_recognition_thread)
 start_button.pack(pady=10)
+
+send_email_button = tk.Button(root, text="Send Email", command=send_email)
+send_email_button.pack(pady=10)
+
+run_script_button = tk.Button(root, text="Run Another Script", command=run_another_script)
+run_script_button.pack(pady=10)
 
 # Main Tkinter loop
 root.mainloop()
