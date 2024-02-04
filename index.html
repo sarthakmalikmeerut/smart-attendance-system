@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        h1 {
+            color: #007bff;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        img {
+            margin-top: 20px;
+            border: 2px solid #007bff;
+            border-radius: 5px;
+        }
+        form {
+            margin-top: 20px;
+        }
+        button {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container text-center">
+        <h1>Face Recognition</h1>
+        <img src="{{ url_for('video_feed') }}" class="img-fluid" />
+        <form action="/start_recognition" method="POST">
+            <button type="submit" class="btn btn-primary">Start Recognition</button>
+        </form>
+        <form action="/send_email" method="POST">
+            <button type="submit" class="btn btn-success">Send Attendance Email</button>
+        </form>
+        <!-- Add New Person Form Modal Trigger Button -->
+        <button type="button" class="btn btn-info" data-toggle="modal" data-target="#addPersonModal">
+            Add New Person
+        </button>
+
+        <!-- Remove Person Form -->
+        <form action="/remove_person" method="POST">
+            <div class="form-group mt-3">
+                <label for="removePersonName">Remove Person:</label>
+                <select class="form-control" id="removePersonName" name="removePersonName" required>
+                    {% for name in classNames %}
+                        <option value="{{ name }}">{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-danger">Remove Person</button>
+        </form>
+
+        <!-- Error Message Section -->
+        {% if error_message %}
+            <div class="alert alert-danger" role="alert">
+                {{ error_message }}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Add New Person Form Modal -->
+    <div class="modal fade" id="addPersonModal" tabindex="-1" role="dialog" aria-labelledby="addPersonModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addPersonModalLabel">Add New Person</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- New Person Form -->
+                    <form action="/add_person" method="POST">
+                        <div class="form-group">
+                            <label for="personName">Person Name:</label>
+                            <input type="text" class="form-control" id="personName" name="personName" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Person</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
