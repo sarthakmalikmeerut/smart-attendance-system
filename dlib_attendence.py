@@ -1,18 +1,20 @@
-
 import cv2
-import numpy as np
 import face_recognition
 import os
 import pickle
 from datetime import datetime
 import csv
-import smtplib
-from email.mime.text import MIMEText
-from flask import Flask, render_template, Response, request, redirect, url_for
+import numpy as np
+import tkinter as tk
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+import subprocess
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+import smtplib
+from email.mime.text import MIMEText
 
-app = Flask(__name__)
+
 # Load images and class names
 path = 'training_images'
 images = [cv2.imread(f'{path}/{cl}') for cl in os.listdir(path)]
@@ -26,50 +28,16 @@ if os.path.exists(encodings_file):
     with open(encodings_file, 'rb') as f:
         encodeListKnown = pickle.load(f)
 
-
 # Initialize video capture
-cap = None
+cap = cv2.VideoCapture(0)
 attendance = {}
 
 
-
-def send_email(file_path):
-    sender_email = "sarthakmalikmeerut@gmail.com"  # Replace with your email
-    sender_password = "nmbc bybf dhng kdsg"
-    receiver_email = "sarthakmalikmeerut@gmail.com"  # Replace with the recipient's email
-
-    subject = "Attendance CSV File"
-    body = "Please find the attached attendance CSV file."
-
-    message = MIMEMultipart()
-    message["From"] = sender_email
-    message["To"] = receiver_email
-    message["Subject"] = subject
-    message.attach(MIMEText(body, "plain"))
-
-    with open(file_path, "rb") as file:
-        attachment = MIMEApplication(file.read(), _subtype="csv")
-        attachment.add_header("Content-Disposition", "attachment", filename=os.path.basename(file_path))
-        message.attach(attachment)
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:  # Use your email provider's SMTP details
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, receiver_email, message.as_string())
-
-
-
-
-def start_camera():
-    global cap
-    cap = cv2.VideoCapture(0)
-
-
-def stop_camera():
+def release_camera():
     global cap
     if cap is not None:
         cap.release()
-        cap = None
+
 
 
 def mark_attendance(name):
@@ -100,205 +68,128 @@ def mark_attendance(name):
                 writer = csv.writer(file)
                 writer.writerow([name, date_string, str(hour)])
                 print(f"Attendance marked for {name} at {hour}:00")
-
-
         else:
             print(f"Attendance already marked for {name} at {hour}:00")
 
-def generate_frames():
-    while True:
-        if cap is not None:
-            success, img = cap.read()
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+def remove_person(selected_person):
+    global encodeListKnown
+    if selected_person:
+        try:
+            index_to_remove = classNames.index(selected_person)
+            del encodeListKnown[index_to_remove]
+            classNames.remove(selected_person)
+            os.remove(f"training_images/{selected_person}.jpg")
+            messagebox.showinfo("Success", f"{selected_person} removed successfully!")
+        except ValueError:
+            messagebox.showerror("Error", f"{selected_person} not found!")
 
-            facesCurFrame = face_recognition.face_locations(img)
-            encodesCurFrame = face_recognition.face_encodings(img, facesCurFrame)
+def open_camera():
+    global cap, encodeListKnown
 
-            for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
-                matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
-                faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
-                matchIndex = np.argmin(faceDis)
+    release_camera()
 
-                if matches[matchIndex]:
-                    name = classNames[matchIndex].upper()
-                    y1, x2, y2, x1 = faceLoc
-                    y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
-                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.rectangle(img, (x1, y2 - 35), (x2, y2), (0, 255, 0), cv2.FILLED)
-                    cv2.putText(img, name, (x1 + 6, y2 - 6), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
-                    mark_attendance(name)
+    cap = cv2.VideoCapture(0)
 
-            ret, frame = cv2.imencode('.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-            frame = frame.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    def update_frame():
+        _, frame = cap.read()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        faces_cur_frame = face_recognition.face_locations(frame)
+        encodes_cur_frame = face_recognition.face_encodings(frame, faces_cur_frame)
+
+        for encode_face, face_loc in zip(encodes_cur_frame, faces_cur_frame):
+            face_dis = face_recognition.face_distance(encodeListKnown, encode_face)
+            match_index = np.argmin(face_dis)
+            confidence = 1 - face_dis[match_index]  # Invert the distance value for confidence
+
+            if face_dis[match_index] < 0.5:  # You can adjust this threshold based on your requirements
+                name = classNames[match_index].upper()
+                y1, x2, y2, x1 = face_loc
+                y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1, y2 - 35), (x2, y2), (0, 255, 0), cv2.FILLED)
+                cv2.putText(frame, f"{name} ({confidence:.2f})", (x1 + 6, y2 - 6), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+                mark_attendance(name)
+
+        img = Image.fromarray(frame)
+        img = ImageTk.PhotoImage(img)
+        panel.img = img
+        panel.config(image=img)
+        root.after(10, update_frame)
+
+    update_frame()
 
 
-@app.route('/')
-def index():
-    path = 'training_images'
-    classNames = [os.path.splitext(cl)[0] for cl in os.listdir(path)]
-    return render_template('index.html',classNames=classNames)
-    print(request.headers)
-    print(request.get_data(as_text=True))
+
+def send_email(file_path):
+    sender_email = "sarthakmalikmeerut@gmail.com"  # Replace with your email
+    sender_password = "nmbc bybf dhng kdsg"
+    receiver_email = "sarthakmalikmeerut@gmail.com"  # Replace with the recipient's email
+
+    subject = "Attendance CSV File"
+    body = "Please find the attached attendance CSV file."
+
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = receiver_email
+    message["Subject"] = subject
+    message.attach(MIMEText(body, "plain"))
+
+    with open(file_path, "rb") as file:
+        attachment = MIMEApplication(file.read(), _subtype="csv")
+        attachment.add_header("Content-Disposition", "attachment", filename=os.path.basename(file_path))
+        message.attach(attachment)
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:  # Use your email provider's SMTP details
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, receiver_email, message.as_string())
 
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+root = tk.Tk()
+root.title("Attendance System")
+
+button_mark_attendance = ttk.Button(root, text="Mark Attendance", command=open_camera)
+button_mark_attendance.pack(pady=10)
 
 
-@app.route('/start_recognition', methods=['POST'])
-def start_recognition_route():
-    start_camera()
-    return render_template('index.html')
+def start_script1():
+    release_camera()
+    subprocess.run(['python', 'add new person.py'])
 
-@app.route('/send_email', methods=['POST'])
-def send_email_route():
-    if cap is not None:
-        stop_camera()  # Stop the camera before sending the email
+def start_script2():
+    release_camera()
+    subprocess.run(['python', 'remove person.py'])
 
-    # Create a new CSV file for the current time (if not already created)
+def send_email_button():
     now = datetime.now()
     date_string = now.strftime("%Y-%m-%d")
     hour = now.hour
     file_name = f'{date_string}_{hour}.csv'
-    if not os.path.exists(file_name):
-        with open(file_name, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(['Name', 'Date', 'Timestamp'])
 
-    # Send email with the current CSV file
-    send_email(file_name)
-
-    return render_template('index.html')
+    if os.path.exists(file_name):
+        send_email(file_name)
+        messagebox.showinfo("Email Sent", f"Attendance CSV file sent successfully!")
+    else:
+        messagebox.showerror("Error", "Attendance CSV file not found!")
 
 
-@app.route('/add_person', methods=['POST'])
-def add_person_route():
-    if request.method == 'POST':
-        person_name = request.form.get('personName')
+# Create buttons for starting external scripts
+button_start_script1 = ttk.Button(root, text="add new person", command=start_script1)
+button_start_script1.pack(pady=5)
 
-        # Initialize video capture
-        cap = cv2.VideoCapture(0)
+button_start_script2 = ttk.Button(root, text="remove existing person", command=start_script2)
+button_start_script2.pack(pady=5)
 
-        # Capture a few frames to allow the user to position their face
-        for _ in range(5):
-            _, frame = cap.read()
-
-        # Convert the frame to RGB format
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # Find face locations in the frame
-        face_locations = face_recognition.face_locations(rgb_frame)
-
-        if not face_locations:
-            # No face found, handle this case as needed
-            return redirect(url_for('index'))
-
-        # Take the first face found (assuming only one person is present)
-        top, right, bottom, left = face_locations[0]
-
-        # Crop the face from the frame
-        face_image = frame[top:bottom, left:right]
-
-        # Save the face image to the 'training_images' folder
-        save_path = os.path.join('training_images', f'{person_name}.jpg')
-        cv2.imwrite(save_path, cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB))
+button_send_email = ttk.Button(root, text="Send Email", command=send_email_button)
+button_send_email.pack(pady=10)
 
 
+# Define panel outside the open_camera function
+panel = tk.Label(root)
+panel.pack(padx=10, pady=10)
 
-        os.remove("encodings.pkl")
+root.mainloop()
 
-        path = 'training_images'
-        images = []
-        classNames = []
-        myList = os.listdir(path)
-        print(myList)
-
-        for cl in myList:
-            curImg = cv2.imread(f'{path}/{cl}')
-            images.append(curImg)
-            classNames.append(os.path.splitext(cl)[0])
-        print(classNames)
-
-        # Load saved encodings if available, otherwise create and save them
-        encodings_file = 'encodings.pkl'
-
-        encodeListKnown = []
-        for image in images:
-            face_encodings = face_recognition.face_encodings(image)
-            if len(face_encodings) > 0:
-                encodeListKnown.append(face_encodings[0])
-            with open(encodings_file, 'wb') as f:
-                pickle.dump(encodeListKnown, f)
-        print('Encodings saved to file.')
-
-
-        cap.release()
-
-        return redirect(url_for('index'))
-
-
-@app.route('/remove_person', methods=['POST'])
-def remove_person_route():
-    encodings_file = 'encodings.pkl'
-    if request.method == 'POST':
-        person_to_remove = request.form.get('removePersonName')
-
-        os.remove(f"training_images/{person_to_remove}.jpg")
-        os.remove(encodings_file)
-        # Load existing encodings
-
-        path = 'training_images'
-        images = []
-        classNames = []
-        myList = os.listdir(path)
-        print(myList)
-
-        for cl in myList:
-            curImg = cv2.imread(f'{path}/{cl}')
-            images.append(curImg)
-            classNames.append(os.path.splitext(cl)[0])
-        print(classNames)
-
-        # Load saved encodings if available, otherwise create and save them
-        encodings_file = 'encodings.pkl'
-
-        encodeListKnown = []
-        for image in images:
-            face_encodings = face_recognition.face_encodings(image)
-            if len(face_encodings) > 0:
-                encodeListKnown.append(face_encodings[0])
-            with open(encodings_file, 'wb') as f:
-                pickle.dump(encodeListKnown, f)
-        print('Encodings saved to file.')
-
-
-
-
-
-        # Find the index of the person to remove
-        index_to_remove = None
-        for i, name in enumerate(classNames):
-            if name == person_to_remove:
-                index_to_remove = i
-                break
-
-        if index_to_remove is not None:
-            # Remove the person's encoding and name
-            del encodeListKnown[index_to_remove]
-            del classNames[index_to_remove]
-
-            # Save the updated encodings list
-            with open(encodings_file, 'wb') as f:
-                pickle.dump(encodeListKnown, f)
-
-            return redirect(url_for('index'))
-        else:
-            # Handle the case where the person to remove is not found
-            return render_template('index.html', error_message="Person not found in the dataset.")
-
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+# Release the video capture when the Tkinter window is closed
+cap.release()
